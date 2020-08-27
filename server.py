@@ -1,3 +1,4 @@
+import os
 import asyncio
 
 from aiohttp import web
@@ -6,11 +7,21 @@ import aiofiles
 BASE_PHOTOS_FOLDER = 'test_photos'
 
 
+def is_folder_exist(folder_name):
+    """Проверяем существует ли папка с фотографиями в общем каталоге."""
+    full_path = os.path.join(BASE_PHOTOS_FOLDER, folder_name)
+    if os.path.exists(full_path):
+        return True
+
+
 async def archivate(request):
     """Функция, которая архивирует переданую в запросе папку и возвращает ответ клиенту по частям."""
     response = web.StreamResponse()
 
     archive_hash = request.match_info.get('archive_hash')
+    if not is_folder_exist(archive_hash):
+        raise web.HTTPNotFound(text='Архив не существует или был удален.')
+
     response.headers['Content-Disposition'] = f'attachment; filename="{archive_hash}.zip"'
 
     await response.prepare(request)
