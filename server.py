@@ -1,8 +1,11 @@
 import os
+import logging
 import asyncio
 
 from aiohttp import web
 import aiofiles
+
+logging.basicConfig(level=logging.DEBUG)
 
 BASE_PHOTOS_FOLDER = 'test_photos'
 
@@ -26,15 +29,22 @@ async def archivate(request):
 
     await response.prepare(request)
 
-    proc = await asyncio.create_subprocess_shell(f'zip -rj - {BASE_PHOTOS_FOLDER}/{archive_hash}',
-                                                 stdout=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec('zip', '-rj', '-', f'{BASE_PHOTOS_FOLDER}/{archive_hash}',
+                                                stdout=asyncio.subprocess.PIPE)
 
-    while True:
-        archive_part = await proc.stdout.read(500 * 1024)
-        if archive_part:
-            await response.write(archive_part)
-        else:
-            break
+    try:
+        while True:
+            archive_part = await proc.stdout.read(500 * 1024)
+            if archive_part:
+                logging.info(f'Sending archive {archive_hash}.zip chunk ...')
+                await response.write(archive_part)
+            else:
+                break
+    except BaseException as e:
+        logging.exception(f'Download was interrupted by exception: {e}', exc_info=True)
+    finally:
+        proc.kill()
+        logging.info(f'Download was interrupted')
 
     await response.write_eof()
 
