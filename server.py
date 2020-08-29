@@ -9,7 +9,7 @@ import aiofiles
 
 
 DEFAULT_PHOTOS_FOLDER = 'test_photos'
-DEFAULT_DELAY = 100 * 1024
+DEFAULT_DELAY = 0
 
 
 def get_arguments():
