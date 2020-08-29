@@ -1,35 +1,44 @@
 import os
 import logging
 import asyncio
+import argparse
+from functools import partial
 
 from aiohttp import web
 import aiofiles
 
-logging.basicConfig(level=logging.DEBUG)
 
-BASE_PHOTOS_FOLDER = 'test_photos'
-
-
-def is_folder_exist(folder_name):
-    """Проверяем существует ли папка с фотографиями в общем каталоге."""
-    full_path = os.path.join(BASE_PHOTOS_FOLDER, folder_name)
-    if os.path.exists(full_path):
-        return True
+DEFAULT_PHOTOS_FOLDER = 'test_photos'
+DEFAULT_DELAY = 100 * 1024
 
 
-async def archivate(request):
-    """Функция, которая архивирует переданую в запросе папку и возвращает ответ клиенту по частям."""
+def get_arguments():
+    """Получаем аргументы командной строки, переданной скрипту."""
+    parser = argparse.ArgumentParser(description='Script runs server for downloading photo archives')
+    parser.add_argument('--logging', default=False, action='store_true', help='Enable logging.')
+    parser.add_argument('--delay', type=int, default=DEFAULT_DELAY, help='Enable delay before downloading.')
+    parser.add_argument('--folder', type=str, default=DEFAULT_PHOTOS_FOLDER, help="Path to photo directory.")
+    return parser.parse_args()
+
+
+async def archivate(request, photos_folder, delay):
+    """
+    Функция, которая архивирует переданую в запросе папку и возвращает ответ клиенту по частям.
+    :params photos_folder папка с фотографиями
+    :params delay задержка между частями ответа
+    """
     response = web.StreamResponse()
 
     archive_hash = request.match_info.get('archive_hash')
-    if not is_folder_exist(archive_hash):
+    full_path_to_folder = os.path.join(photos_folder, archive_hash)
+    if not os.path.exists(full_path_to_folder):
         raise web.HTTPNotFound(text='Архив не существует или был удален.')
 
     response.headers['Content-Disposition'] = f'attachment; filename="{archive_hash}.zip"'
 
     await response.prepare(request)
 
-    proc = await asyncio.create_subprocess_exec('zip', '-rj', '-', f'{BASE_PHOTOS_FOLDER}/{archive_hash}',
+    proc = await asyncio.create_subprocess_exec('zip', '-rj', '-', f'{full_path_to_folder}',
                                                 stdout=asyncio.subprocess.PIPE)
 
     try:
@@ -38,6 +47,8 @@ async def archivate(request):
             if archive_part:
                 logging.info(f'Sending archive {archive_hash}.zip chunk ...')
                 await response.write(archive_part)
+                if delay:
+                    await asyncio.sleep(delay)
             else:
                 break
     except (asyncio.exceptions.CancelledError, KeyboardInterrupt):
@@ -63,9 +74,14 @@ async def handle_index_page(request):
 
 
 if __name__ == '__main__':
+    args = get_arguments()
+
+    if args.logging:
+        logging.basicConfig(level=logging.DEBUG)
+
     app = web.Application()
     app.add_routes([
         web.get('/', handle_index_page),
-        web.get('/archive/{archive_hash}/', archivate),
+        web.get('/archive/{archive_hash}/', partial(archivate, photos_folder=args.folder, delay=args.delay)),
     ])
     web.run_app(app)
