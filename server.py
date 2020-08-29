@@ -40,13 +40,17 @@ async def archivate(request):
                 await response.write(archive_part)
             else:
                 break
+    except (asyncio.exceptions.CancelledError, KeyboardInterrupt):
+        logging.info(f'Download was interrupted')
+        proc.kill()
     except BaseException as e:
+        proc.kill()
         logging.exception(f'Download was interrupted by exception: {e}', exc_info=True)
     finally:
-        proc.kill()
-        logging.info(f'Download was interrupted')
-
-    await response.write_eof()
+        if proc.returncode is None:
+            proc.kill()
+            await proc.communicate()
+        response.force_close()
 
     return response
 
