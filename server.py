@@ -38,22 +38,24 @@ async def archivate(request, photos_folder, delay):
 
     await response.prepare(request)
 
-    proc = await asyncio.create_subprocess_exec('zip', '-rj', '-', f'{full_path_to_folder}',
+    # Параметр j исключает папки из архива, архивируются только файлы
+    proc = await asyncio.create_subprocess_exec('zip', '-rj', '-', full_path_to_folder,
                                                 stdout=asyncio.subprocess.PIPE)
 
     try:
         while True:
             archive_part = await proc.stdout.read(500 * 1024)
-            if archive_part:
-                logging.info(f'Sending archive {archive_hash}.zip chunk ...')
-                await response.write(archive_part)
-                if delay:
-                    await asyncio.sleep(delay)
-            else:
+            if not archive_part:
                 break
+            logging.info(f'Sending archive {archive_hash}.zip chunk ...')
+            await response.write(archive_part)
+            if delay:
+                await asyncio.sleep(delay)
+
     except (asyncio.exceptions.CancelledError, KeyboardInterrupt):
         logging.info(f'Download was interrupted')
         proc.kill()
+        raise
     except BaseException as e:
         proc.kill()
         logging.exception(f'Download was interrupted by exception: {e}', exc_info=True)
